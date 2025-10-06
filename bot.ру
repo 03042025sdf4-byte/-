@@ -1,24 +1,24 @@
 import json
 import re
-from datetime import date
+from datetime import date, timedelta
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 import os
 
-TOKEN = os.getenv("BOT_TOKEN")  # 🔒 токен берём из переменной среды
+TOKEN = os.getenv("BOT_TOKEN")
 DATA_FILE = "data.json"
 
 def load_data():
     try:
         with open(DATA_FILE, "r") as f:
             data = json.load(f)
+            # Список транзакций и остаток
             return {
-                "total": data.get("total", 0),
-                "expenses_today": data.get("expenses_today", 0),
-                "date": data.get("date", str(date.today()))
+                "transactions": data.get("transactions", []),
+                "total": int(data.get("total", 0))
             }
     except FileNotFoundError:
-        return {"total": 0, "expenses_today": 0, "date": str(date.today())}
+        return {"transactions": [], "total": 0}
 
 def save_data(data):
     with open(DATA_FILE, "w") as f:
@@ -26,42 +26,72 @@ def save_data(data):
 
 data = load_data()
 
-# Сброс расходов на новый день
-if data["date"] != str(date.today()):
-    data["expenses_today"] = 0
-    data["date"] = str(date.today())
-    save_data(data)
+# Даты для последних двух дней
+today_str = str(date.today())
+yesterday_str = str(date.today() - timedelta(days=1))
+
+# Оставляем только транзакции за последние два дня
+data["transactions"] = [t for t in data["transactions"] if t["date"] in (today_str, yesterday_str)]
+
+def format_money(amount: int) -> str:
+    return f"{amount:,}".replace(",", ".")
+
+def recalc_totals():
+    total = 0
+    expenses_today = 0
+    for t in data["transactions"]:
+        if t["type"] == "income":
+            total += t["amount"]
+        else:
+            total -= t["amount"]
+            if t["date"] == today_str:
+                expenses_today += t["amount"]
+    data["total"] = total
+    return total, expenses_today
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global data
     text = update.message.text.strip()
     lines = text.split("\n")
 
+    messages = []
+
     for line in lines:
         line = line.strip()
         if not line:
             continue
 
+        match = re.match(r"^([+-]?\d+)", line)
+        if not match:
+            continue
+        num = int(match.group(1))
+
         if line.startswith("+"):
-            # Приход денег
-            try:
-                num = int(line)
-            except ValueError:
-                continue
-            data["total"] += num
+            # Приход
+            data["transactions"].append({
+                "date": today_str,
+                "amount": num,
+                "type": "income"
+            })
+            messages.append(f"📈 +{format_money(num)} ars (приход)")
         else:
-            # Расход денег (числа без знака)
-            try:
-                num = int(line)
-            except ValueError:
-                continue
-            data["total"] -= num
-            data["expenses_today"] += num
+            # Расход
+            data["transactions"].append({
+                "date": today_str,
+                "amount": num,
+                "type": "expense"
+            })
+            messages.append(f"📉 -{format_money(num)} ars (расход)")
+
+    # Пересчёт остатков
+    total, expenses_today = recalc_totals()
 
     save_data(data)
 
-    reply = (f"📉 Расход за сегодня: {data['expenses_today']}\n"
-             f"💰 Текущий остаток: {data['total']}")
+    # Итоговое сообщение
+    reply = "\n".join(messages)
+    reply += f"\n📉 Расход за сегодня: -{format_money(expenses_today)} ars"
+    reply += f"\n💰 Текущий остаток: {format_money(total)} ars"
     await update.message.reply_text(reply)
 
 app = ApplicationBuilder().token(TOKEN).build()
