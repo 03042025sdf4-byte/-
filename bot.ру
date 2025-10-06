@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import date
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 import os
@@ -10,33 +11,63 @@ DATA_FILE = "data.json"
 def load_data():
     try:
         with open(DATA_FILE, "r") as f:
-            return json.load(f).get("total", 0)
+            data = json.load(f)
+            # Если нет ключей, создаём их
+            return {
+                "total": data.get("total", 0),
+                "expenses_today": data.get("expenses_today", 0),
+                "date": data.get("date", str(date.today()))
+            }
     except FileNotFoundError:
-        return 0
+        return {"total": 0, "expenses_today": 0, "date": str(date.today())}
 
-def save_data(total):
+def save_data(data):
     with open(DATA_FILE, "w") as f:
-        json.dump({"total": total}, f)
+        json.dump(data, f)
 
-total = load_data()
+data = load_data()
+
+# Сброс расходов на новый день
+if data["date"] != str(date.today()):
+    data["expenses_today"] = 0
+    data["date"] = str(date.today())
+    save_data(data)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global total
+    global data
     text = update.message.text.strip()
     lines = text.split("\n")
 
     added_numbers = []
     for line in lines:
-        match = re.match(r"^([+-]?\d+)", line.strip())
-        if match:
-            num = int(match.group(1))
-            total += num
+        line = line.strip()
+        if not line:
+            continue
+
+        if line.startswith("+"):
+            # Приход
+            try:
+                num = int(line)
+            except ValueError:
+                continue
+            data["total"] += num
             added_numbers.append(num)
+        else:
+            # Расход (числа без знака или с минусом)
+            try:
+                num = int(line)
+            except ValueError:
+                continue
+            data["total"] -= abs(num)  # вычитаем
+            data["expenses_today"] += abs(num)
+            added_numbers.append(-abs(num))
 
     if added_numbers:
-        save_data(total)
+        save_data(data)
         added_str = ", ".join([f"{'+' if n > 0 else ''}{n}" for n in added_numbers])
-        reply = f"✅ Добавлено: {added_str}\n💰 Текущая сумма: {total}"
+        reply = (f"✅ Добавлено: {added_str}\n"
+                 f"💰 Текущий остаток: {data['total']}\n"
+                 f"📉 Расход за сегодня: {data['expenses_today']}")
         await update.message.reply_text(reply)
 
 app = ApplicationBuilder().token(TOKEN).build()
