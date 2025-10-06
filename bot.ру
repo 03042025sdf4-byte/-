@@ -12,7 +12,6 @@ def load_data():
     try:
         with open(DATA_FILE, "r") as f:
             data = json.load(f)
-            # Если нет ключей, создаём их
             return {
                 "total": data.get("total", 0),
                 "expenses_today": data.get("expenses_today", 0),
@@ -38,37 +37,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     lines = text.split("\n")
 
-    added_numbers = []
     for line in lines:
         line = line.strip()
         if not line:
             continue
 
         if line.startswith("+"):
-            # Приход
+            # Приход денег
             try:
                 num = int(line)
             except ValueError:
                 continue
             data["total"] += num
-            added_numbers.append(num)
         else:
-            # Расход (числа без знака или с минусом)
+            # Расход денег (числа без знака)
             try:
                 num = int(line)
             except ValueError:
                 continue
-            data["total"] -= abs(num)  # вычитаем
-            data["expenses_today"] += abs(num)
-            added_numbers.append(-abs(num))
+            data["total"] -= num
+            data["expenses_today"] += num
 
-    if added_numbers:
-        save_data(data)
-        added_str = ", ".join([f"{'+' if n > 0 else ''}{n}" for n in added_numbers])
-        reply = (f"✅ Добавлено: {added_str}\n"
-                 f"💰 Текущий остаток: {data['total']}\n"
-                 f"📉 Расход за сегодня: {data['expenses_today']}")
-        await update.message.reply_text(reply)
+    save_data(data)
+
+    reply = (f"📉 Расход за сегодня: {data['expenses_today']}\n"
+             f"💰 Текущий остаток: {data['total']}")
+    await update.message.reply_text(reply)
 
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
