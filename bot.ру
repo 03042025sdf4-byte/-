@@ -3,7 +3,7 @@ import re
 import os
 from aiogram import Bot, Dispatcher, executor, types
 
-API_TOKEN = os.getenv("API_TOKEN")  # Токен берём из переменных окружения
+API_TOKEN = os.getenv("8475002362:AAHtx03EBMUl6T4wUNROyrN23kpuLtOaHT0")  # Токен берём из переменных окружения
 
 logging.basicConfig(level=logging.INFO)
 
