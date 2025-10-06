@@ -61,8 +61,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             continue
         match = re.match(r"^([+-]?\d+)", line)
         if not match:
-            # Игнорируем строки без числа в начале
-            continue
+            continue  # Игнорируем строки без числа в начале
         num = int(match.group(1))
         comment = line[len(match.group(1)):].strip()
         transaction_id = str(uuid.uuid4())
@@ -86,15 +85,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             })
             messages.append(f"📉 -{format_money(num)} ars [ID: {transaction_id[:8]}] {comment}")
 
-    if messages:
-        total, expenses_today, income_today = recalc_totals()
-        save_data(data)
-        reply = "\n".join(messages)
-        reply += f"\n📉 Расход за сегодня: -{format_money(expenses_today)} ars"
-        reply += f"\n📈 Приход за сегодня: +{format_money(income_today)} ars"
-        reply += f"\n💰 Текущий остаток: {format_money(total)} ars"
-        await update.message.reply_text(reply)
+    # Если нет новых транзакций, не отправляем ничего
+    if not messages:
+        return
 
+    total, expenses_today, income_today = recalc_totals()
+    save_data(data)
+    reply = "\n".join(messages)
+    reply += f"\n📉 Расход за сегодня: -{format_money(expenses_today)} ars"
+    reply += f"\n📈 Приход за сегодня: +{format_money(income_today)} ars"
+    reply += f"\n💰 Текущий остаток: {format_money(total)} ars"
+
+    await update.message.reply_text(reply)
 # ----------------------- Редактирование -----------------------
 async def edit_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global data
